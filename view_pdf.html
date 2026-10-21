@@ -1,1 +1,153 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewer PDF Aman - Google Drive</title>
+    <!-- Sertakan PDF.js dari CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background: #f4f4f4;
+            text-align: center;
+        }
+        .viewer-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 15px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        #pdf-canvas {
+            width: 100% !important;
+            height: auto !important;
+            border: 1px solid #ddd;
+        }
+        .controls {
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 8px 12px;
+            margin: 2px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #ccc;
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;"> <!-- Mencegah klik kanan -->
 
+<div class="viewer-container">
+    <p><strong>Viewer Dokumen PDF</strong><br>Sumber: Google Drive</p>
+    
+    <div class="controls">
+        <button id="prev-page" onclick="onPrevPage()">Sebelumnya</button>
+        <span>Hal: <span id="page-num"></span> / <span id="page-count"></span></span>
+        <button id="next-page" onclick="onNextPage()">Selanjutnya</button>
+    </div>
+
+    <!-- Wadah Canvas PDF -->
+    <div style="position: relative; display: inline-block; width: 100%;">
+        <canvas id="pdf-canvas"></canvas>
+        <!-- Lapisan transparan di atas canvas untuk mencegah klik kanan / simpan gambar -->
+        <div style="position: absolute; top:0; left:0; width:100%; height:100%; z-index:10;"></div>
+    </div>
+</div>
+
+<script>
+    // Fungsi untuk mengambil parameter 'id' dari URL (contoh: view_pdf.html?id=1q1moVHkX3wDijU...)
+    function getQueryParam(param) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
+    }
+
+    var fileId = getQueryParam('id');
+
+    if (!fileId) {
+        alert('ID File Google Drive tidak ditemukan di URL!');
+    } else {
+        // URL Direct Download Google Drive
+        var driveUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
+        
+        // Melewatkan URL melalui CORS Proxy agar bisa dibaca oleh JavaScript di GitHub Pages
+        var url = "https://corsproxy.io/?" + encodeURIComponent(driveUrl);
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        var pdfDoc = null,
+            pageNum = 1,
+            pageRendering = false,
+            pageNumPending = null,
+            scale = 1.5,
+            canvas = document.getElementById('pdf-canvas'),
+            ctx = canvas.getContext('2d');
+
+        function renderPage(num) {
+            pageRendering = true;
+            pdfDoc.getPage(num).then(function(page) {
+                var viewport = page.getViewport({scale: scale});
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                var renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                var renderTask = page.render(renderContext);
+
+                renderTask.promise.then(function() {
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                });
+            });
+
+            document.getElementById('page-num').textContent = num;
+        }
+
+        function queueRenderPage(num) {
+            if (pageRendering) {
+                pageNumPending = num;
+            } else {
+                renderPage(num);
+            }
+        }
+
+        function onPrevPage() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            queueRenderPage(pageNum);
+        }
+
+        function onNextPage() {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            queueRenderPage(pageNum);
+        }
+
+        // Memuat dokumen PDF menggunakan PDF.js
+        pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+            pdfDoc = pdfDoc_;
+            document.getElementById('page-count').textContent = pdfDoc.numPages;
+            renderPage(pageNum);
+        }).catch(function(error) {
+            console.error('Gagal memuat PDF:', error);
+            alert('Terjadi kesalahan saat memuat dokumen PDF dari Google Drive. Pastikan file sudah diatur "Anyone with the link can view".');
+        });
+    }
+</script>
+
+</body>
+</html>
